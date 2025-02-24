@@ -20,10 +20,24 @@ class MapManager {
         this.scene = document.querySelector('a-scene');
         this.waypointsEntity = document.querySelector('#waypoints');
         
-        // Setup AR camera events
+        // Setup AR camera and cursor events
         const camera = document.querySelector('a-camera');
-        camera.addEventListener('pose-updated', (event) => {
-            this.updateCameraPose(event.detail.position, event.detail.rotation);
+        const cursor = document.querySelector('a-cursor');
+        
+        // Track camera position changes
+        camera.addEventListener('componentchanged', (event) => {
+            if (event.detail.name === 'position' || event.detail.name === 'rotation') {
+                this.updateCameraPose(camera.getAttribute('position'), camera.getAttribute('rotation'));
+            }
+        });
+
+        // Setup cursor events for better interaction feedback
+        cursor.addEventListener('mouseenter', () => {
+            cursor.setAttribute('scale', '1.2 1.2 1.2');
+        });
+        
+        cursor.addEventListener('mouseleave', () => {
+            cursor.setAttribute('scale', '1 1 1');
         });
     }
 
@@ -35,22 +49,33 @@ class MapManager {
             features: []
         };
 
-        this.statusDiv.textContent = 'Tap to place waypoints. Press Save when done.';
+        this.statusDiv.textContent = 'Creating new map. Click on the green plane to place waypoints. Press Save when done.';
         this.createMapBtn.textContent = 'Save Map';
         this.createMapBtn.onclick = () => this.saveCurrentMap();
 
-        // Enable tap to place waypoints
+        // Enable click to place waypoints
         this.scene.addEventListener('click', this.handleMapClick.bind(this));
+        
+        // Add debug info
+        this.debugInterval = setInterval(() => {
+            const camera = document.querySelector('a-camera');
+            const pos = camera.getAttribute('position');
+            this.statusDiv.textContent = `Camera position: ${JSON.stringify(pos)}. Click to place waypoints.`;
+        }, 1000);
     }
 
     handleMapClick(event) {
         if (!this.currentMap) return;
 
         const intersection = event.detail.intersection;
-        if (!intersection) return;
+        if (!intersection) {
+            this.statusDiv.textContent = 'No intersection point found. Try clicking on the green plane.';
+            return;
+        }
 
         const position = intersection.point;
         this.addWaypoint(position);
+        this.statusDiv.textContent = `Waypoint added at ${JSON.stringify(position)}`;
     }
 
     addWaypoint(position) {
@@ -164,6 +189,14 @@ class MapManager {
         this.createMapBtn.textContent = 'Create Map';
         this.createMapBtn.onclick = () => this.startMapCreation();
         this.scene.removeEventListener('click', this.handleMapClick);
+        
+        // Clear debug interval
+        if (this.debugInterval) {
+            clearInterval(this.debugInterval);
+            this.debugInterval = null;
+        }
+        
+        this.statusDiv.textContent = 'Map creation cancelled. Click Create Map to start again.';
     }
 
     distance(pos1, pos2) {
