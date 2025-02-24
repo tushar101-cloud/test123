@@ -1,6 +1,23 @@
 class MapManager {
     constructor() {
+        // Initialize maps from localStorage if available
         this.maps = new Map();
+        const savedMaps = localStorage.getItem('maps');
+        if (savedMaps) {
+            try {
+                const mapEntries = JSON.parse(savedMaps);
+                this.maps = new Map(mapEntries);
+                console.log('Loaded saved maps:', this.maps);
+            } catch (error) {
+                console.error('Error loading saved maps:', error);
+                // Initialize empty storage if there's an error
+                localStorage.setItem('maps', JSON.stringify([]));
+            }
+        } else {
+            // Initialize empty storage if no maps exist
+            localStorage.setItem('maps', JSON.stringify([]));
+        }
+
         this.currentMap = null;
         this.waypoints = [];
         this.initializeUI();
@@ -12,8 +29,23 @@ class MapManager {
         this.loadMapBtn = document.getElementById('load-map');
         this.statusDiv = document.getElementById('status');
 
-        this.createMapBtn.addEventListener('click', () => this.startMapCreation());
-        this.loadMapBtn.addEventListener('click', () => this.showMapList());
+        // Debug log to verify elements are found
+        console.log('Create Map Button:', this.createMapBtn);
+        console.log('Load Map Button:', this.loadMapBtn);
+        console.log('Status Div:', this.statusDiv);
+
+        if (this.createMapBtn) {
+            this.createMapBtn.addEventListener('click', () => {
+                console.log('Create Map button clicked');
+                this.startMapCreation();
+            });
+        } else {
+            console.error('Create Map button not found');
+        }
+
+        if (this.loadMapBtn) {
+            this.loadMapBtn.addEventListener('click', () => this.showMapList());
+        }
     }
 
     setupARScene() {
@@ -42,26 +74,62 @@ class MapManager {
     }
 
     startMapCreation() {
-        this.currentMap = {
-            id: Date.now().toString(),
-            name: 'New Map',
-            waypoints: [],
-            features: []
-        };
-
-        this.statusDiv.textContent = 'Creating new map. Click on the green plane to place waypoints. Press Save when done.';
-        this.createMapBtn.textContent = 'Save Map';
-        this.createMapBtn.onclick = () => this.saveCurrentMap();
-
-        // Enable click to place waypoints
-        this.scene.addEventListener('click', this.handleMapClick.bind(this));
+        console.log('Starting map creation...');
         
-        // Add debug info
-        this.debugInterval = setInterval(() => {
-            const camera = document.querySelector('a-camera');
-            const pos = camera.getAttribute('position');
-            this.statusDiv.textContent = `Camera position: ${JSON.stringify(pos)}. Click to place waypoints.`;
-        }, 1000);
+        try {
+            this.currentMap = {
+                id: Date.now().toString(),
+                name: 'New Map',
+                waypoints: [],
+                features: []
+            };
+
+            console.log('New map created:', this.currentMap);
+
+            if (this.statusDiv) {
+                this.statusDiv.textContent = 'Creating new map. Click on the green plane to place waypoints. Press Save when done.';
+            }
+
+            if (this.createMapBtn) {
+                this.createMapBtn.textContent = 'Save Map';
+                this.createMapBtn.onclick = () => {
+                    console.log('Save Map clicked');
+                    this.saveCurrentMap();
+                };
+            }
+
+            if (this.scene) {
+                // Remove any existing click listener first
+                this.scene.removeEventListener('click', this.handleMapClick.bind(this));
+                // Add new click listener
+                this.scene.addEventListener('click', this.handleMapClick.bind(this));
+                console.log('Click listener added to scene');
+            } else {
+                console.error('Scene not found');
+            }
+
+            // Add debug info
+            if (this.debugInterval) {
+                clearInterval(this.debugInterval);
+            }
+
+            this.debugInterval = setInterval(() => {
+                const camera = document.querySelector('a-camera');
+                if (camera) {
+                    const pos = camera.getAttribute('position');
+                    if (this.statusDiv) {
+                        this.statusDiv.textContent = `Camera position: ${JSON.stringify(pos)}. Click to place waypoints.`;
+                    }
+                }
+            }, 1000);
+
+            console.log('Map creation setup complete');
+        } catch (error) {
+            console.error('Error in startMapCreation:', error);
+            if (this.statusDiv) {
+                this.statusDiv.textContent = 'Error starting map creation. Check console for details.';
+            }
+        }
     }
 
     handleMapClick(event) {
@@ -136,16 +204,25 @@ class MapManager {
     async saveCurrentMap() {
         if (!this.currentMap) return;
 
-        // Get current camera features
-        const features = await this.captureFeatures();
-        this.currentMap.features = features;
+        console.log('Saving map:', this.currentMap);
 
-        // Save to local storage
-        this.maps.set(this.currentMap.id, this.currentMap);
-        localStorage.setItem('maps', JSON.stringify(Array.from(this.maps.entries())));
+        try {
+            // Get current camera features
+            const features = await this.captureFeatures();
+            this.currentMap.features = features;
 
-        this.statusDiv.textContent = 'Map saved successfully!';
-        this.resetMapCreation();
+            // Save to local storage
+            this.maps.set(this.currentMap.id, this.currentMap);
+            const mapData = Array.from(this.maps.entries());
+            localStorage.setItem('maps', JSON.stringify(mapData));
+            console.log('Map saved to localStorage:', mapData);
+
+            this.statusDiv.textContent = 'Map saved successfully!';
+            this.resetMapCreation();
+        } catch (error) {
+            console.error('Error saving map:', error);
+            this.statusDiv.textContent = 'Error saving map. Check console for details.';
+        }
     }
 
     async captureFeatures() {
@@ -159,8 +236,59 @@ class MapManager {
 
     showMapList() {
         const maps = Array.from(this.maps.values());
-        // Implementation for showing map list UI
         console.log('Available maps:', maps);
+
+        // Clear any existing list
+        const existingList = document.getElementById('map-list');
+        if (existingList) {
+            existingList.remove();
+        }
+
+        // Create map list container
+        const listContainer = document.createElement('div');
+        listContainer.id = 'map-list';
+        listContainer.style.cssText = `
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            z-index: 1000;
+        `;
+
+        if (maps.length === 0) {
+            listContainer.innerHTML = '<p>No saved maps found</p>';
+        } else {
+            const list = document.createElement('ul');
+            list.style.listStyle = 'none';
+            list.style.padding = '0';
+            
+            maps.forEach(map => {
+                const item = document.createElement('li');
+                item.style.margin = '10px 0';
+                item.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span>Map: ${map.name} (${map.waypoints.length} waypoints)</span>
+                        <button onclick="window.mapManager.loadMap('${map.id}')">Load</button>
+                    </div>
+                `;
+                list.appendChild(item);
+            });
+            
+            listContainer.appendChild(list);
+        }
+
+        // Add close button
+        const closeBtn = document.createElement('button');
+        closeBtn.textContent = 'Close';
+        closeBtn.style.marginTop = '10px';
+        closeBtn.onclick = () => listContainer.remove();
+        listContainer.appendChild(closeBtn);
+
+        document.body.appendChild(listContainer);
     }
 
     loadMap(mapId) {

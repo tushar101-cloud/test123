@@ -47,6 +47,7 @@ button:active {
     text-align: center;
     margin-top: 10px;
     font-size: 14px;
+    pointer-events: auto;
 }
 
 .waypoint-marker {
@@ -62,6 +63,60 @@ button:active {
     background: #4CAF50;
     height: 3px;
     transform-origin: left center;
+}
+
+/* Map List Styles */
+#map-list {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: white;
+    padding: 20px;
+    border-radius: 10px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    z-index: 2000;
+    max-width: 400px;
+    width: 90%;
+    pointer-events: auto;
+}
+
+#map-list ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+#map-list li {
+    padding: 10px;
+    border-bottom: 1px solid #eee;
+}
+
+#map-list li:last-child {
+    border-bottom: none;
+}
+
+#map-list button {
+    background: #2196F3;
+    padding: 6px 12px;
+    font-size: 14px;
+    margin: 0 0 0 10px;
+}
+
+#map-list button:hover {
+    background: #1976D2;
+}
+
+#map-list .close-btn {
+    background: #f44336;
+    margin-top: 15px;
+    width: 100%;
+}
+
+#map-list .close-btn:hover {
+    background: #d32f2f;
 }
 
 .loading {
@@ -126,5 +181,10 @@ button:active {
     
     #status {
         font-size: 12px;
+    }
+
+    #map-list {
+        width: 95%;
+        max-height: 80vh;
     }
 }
