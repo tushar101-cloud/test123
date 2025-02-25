@@ -8,7 +8,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // MongoDB connection
-const mongoURI = 'mongodb+srv://rishitush:6STJgxPWUeelXVhL@cluster0.1tmfl.mongodb.net/indoor-nav';
+const mongoURI = 'mongodb+srv://rishitush:6STJgxPWUeelXVhL@cluster0.1tmfl.mongodb.net/?retryWrites=true&w=majority&appName=cluster0';
 mongoose.connect(mongoURI, { useNewUrlParser: true, useUnifiedTopology: true, dbName: 'indoor-nav' })
     .then(() => console.log('MongoDB connected'))
     .catch(err => console.error('MongoDB connection error:', err));
