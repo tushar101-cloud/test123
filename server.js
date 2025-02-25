@@ -8,8 +8,8 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // MongoDB connection
-const mongoURI = 'mongodb+srv://rishitush:6STJgxPWUeelXVhL@cluster0.1tmfl.mongodb.net';
-mongoose.connect(mongoURI, { useNewUrlParser: true, useUnifiedTopology: true })
+const mongoURI = 'mongodb+srv://rishitush:6STJgxPWUeelXVhL@cluster0.1tmfl.mongodb.net/indoor-nav';
+mongoose.connect(mongoURI, { useNewUrlParser: true, useUnifiedTopology: true, dbName: 'indoor-nav' })
     .then(() => console.log('MongoDB connected'))
     .catch(err => console.error('MongoDB connection error:', err));
 

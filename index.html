@@ -21,8 +21,8 @@
         <div id="status">Ready</div>
     </div>
 
-    <a-scene embedded arjs="sourceType: webcam; debugUIEnabled: true; trackingMethod: best;" vr-mode-ui="enabled: false">
-        <a-camera position="0 1.6 0" look-controls wasd-controls rotation-reader>
+    <a-scene embedded arjs="sourceType: webcam; debugUIEnabled: false; trackingMethod: best; detectionMode: mono_and_matrix; matrixCodeType: 3x3;" vr-mode-ui="enabled: false">
+        <a-camera gps-camera position="0 1.6 0" look-controls="enabled: false" wasd-controls="enabled: false" rotation-reader>
             <a-cursor raycaster="objects: .clickable, .waypoint-marker" cursor="fuse: false"></a-cursor>
         </a-camera>
         <a-entity id="waypoints"></a-entity>

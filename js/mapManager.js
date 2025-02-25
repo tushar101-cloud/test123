@@ -362,14 +362,19 @@ class MapManager {
 
     async loadMap(mapId) {
         try {
+            console.log('Loading map with ID:', mapId);
             const response = await fetch(`/api/maps/${mapId}`);
             if (!response.ok) {
                 throw new Error('Map not found');
             }
             const map = await response.json();
+            console.log('Loaded map data:', map);
+            
             this.currentMap = map;
             this.clearScene();
-            this.renderMap(map);
+            await this.renderMap(map);
+            
+            this.statusDiv.textContent = `Loaded map: ${map.name} with ${map.waypoints.length} waypoints`;
         } catch (error) {
             console.error('Error loading map:', error);
             this.statusDiv.textContent = 'Error loading map. Check console for details.';
@@ -377,15 +382,49 @@ class MapManager {
     }
 
     clearScene() {
+        console.log('Clearing scene');
         while (this.waypointsEntity.firstChild) {
             this.waypointsEntity.removeChild(this.waypointsEntity.firstChild);
         }
     }
 
-    renderMap(map) {
-        map.waypoints.forEach(waypoint => {
-            this.addWaypoint(waypoint.position);
-        });
+    async renderMap(map) {
+        console.log('Rendering map:', map);
+        if (!map.waypoints || !Array.isArray(map.waypoints)) {
+            console.error('Invalid waypoints data:', map.waypoints);
+            return;
+        }
+
+        for (const waypoint of map.waypoints) {
+            if (!waypoint.position) {
+                console.error('Invalid waypoint data:', waypoint);
+                continue;
+            }
+
+            console.log('Rendering waypoint:', waypoint);
+            
+            // Create visual marker
+            const marker = document.createElement('a-sphere');
+            marker.setAttribute('position', waypoint.position);
+            marker.setAttribute('radius', '0.1');
+            marker.setAttribute('color', '#ff4081');
+            marker.setAttribute('class', 'waypoint-marker');
+            marker.setAttribute('data-id', waypoint.id);
+            
+            this.waypointsEntity.appendChild(marker);
+
+            // Render connections
+            if (waypoint.connections && Array.isArray(waypoint.connections)) {
+                waypoint.connections.forEach(connectedId => {
+                    const connectedWaypoint = map.waypoints.find(w => w.id === connectedId);
+                    if (connectedWaypoint) {
+                        this.drawConnection(waypoint.position, connectedWaypoint.position);
+                    }
+                });
+            }
+        }
+        
+        console.log('Map rendering complete');
     }
 
     resetMapCreation() {
