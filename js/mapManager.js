@@ -222,9 +222,35 @@ class MapManager {
     }
 
     async saveCurrentMap() {
-        if (!this.currentMap) return;
+        if (!this.currentMap) {
+            console.error('No current map to save');
+            this.statusDiv.textContent = 'Error: No map to save';
+            return;
+        }
 
-        console.log('Saving map:', this.currentMap);
+        console.log('Preparing to save map:', this.currentMap);
+
+        // Validate map data
+        if (!this.validateMapData()) {
+            console.error('Invalid map data');
+            this.statusDiv.textContent = 'Error: Invalid map data';
+            return;
+        }
+
+        // Format waypoint positions
+        const formattedMap = {
+            ...this.currentMap,
+            waypoints: this.currentMap.waypoints.map(waypoint => ({
+                ...waypoint,
+                position: {
+                    x: parseFloat(waypoint.position.x.toFixed(3)),
+                    y: parseFloat(waypoint.position.y.toFixed(3)),
+                    z: parseFloat(waypoint.position.z.toFixed(3))
+                }
+            }))
+        };
+
+        console.log('Formatted map data:', formattedMap);
 
         try {
             // Save to database
@@ -233,11 +259,11 @@ class MapManager {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify(this.currentMap)
+                body: JSON.stringify(formattedMap)
             });
 
             if (!response.ok) {
-                throw new Error('Failed to save map');
+                throw new Error(`Failed to save map: ${response.statusText}`);
             }
 
             const savedMap = await response.json();
@@ -248,8 +274,26 @@ class MapManager {
             this.resetMapCreation();
         } catch (error) {
             console.error('Error saving map:', error);
-            this.statusDiv.textContent = 'Error saving map. Check console for details.';
+            this.statusDiv.textContent = `Error saving map: ${error.message}`;
         }
+    }
+
+    validateMapData() {
+        if (!this.currentMap.id || !this.currentMap.name) {
+            console.error('Missing map id or name');
+            return false;
+        }
+        if (!Array.isArray(this.currentMap.waypoints) || this.currentMap.waypoints.length === 0) {
+            console.error('No waypoints in the map');
+            return false;
+        }
+        for (const waypoint of this.currentMap.waypoints) {
+            if (!waypoint.id || !waypoint.position || !waypoint.connections) {
+                console.error('Invalid waypoint data:', waypoint);
+                return false;
+            }
+        }
+        return true;
     }
 
     async showMapList() {
