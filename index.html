@@ -52,12 +52,12 @@
     <!-- AR Scene -->
     <a-scene 
         embedded
-        arjs="sourceType: webcam; debugUIEnabled: false; detectionMode: mono_and_matrix; matrixCodeType: 3x3;"
-        renderer="logarithmicDepthBuffer: true;"
+        arjs="sourceType: webcam; debugUIEnabled: false; detectionMode: mono_and_matrix; matrixCodeType: 3x3; facingMode: environment; sourceWidth: 1280; sourceHeight: 960;"
+        renderer="logarithmicDepthBuffer: true; precision: medium;"
         vr-mode-ui="enabled: false">
 
         <!-- Camera -->
-        <a-entity camera position="0 1.6 0">
+        <a-entity camera position="0 1.6 0" look-controls="enabled: false" wasd-controls="enabled: false" rotation-reader>
             <a-cursor raycaster="objects: .clickable, .waypoint-marker" cursor="fuse: false"></a-cursor>
         </a-entity>
 
@@ -96,6 +96,17 @@
         const loader = document.querySelector('.arjs-loader');
         scene.addEventListener('loaded', () => {
             loader.style.display = 'none';
+        });
+
+        // Force back camera usage
+        navigator.mediaDevices.getUserMedia({
+            video: {
+                facingMode: { exact: "environment" }
+            }
+        }).catch(function(err) {
+            console.error("Back camera not available:", err);
+            // Fallback to any available camera
+            return navigator.mediaDevices.getUserMedia({ video: true });
         });
     </script>
 </body>
