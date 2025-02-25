@@ -5,18 +5,6 @@ class MapManager {
         this.waypoints = [];
         this.initializeUI();
         this.setupARScene();
-        this.loadMaps(); // Load maps from database on startup
-    }
-
-    async loadMaps() {
-        try {
-            const response = await fetch('/api/maps');
-            const maps = await response.json();
-            this.maps = new Map(maps.map(map => [map.id, map]));
-            console.log('Loaded maps from database:', this.maps);
-        } catch (error) {
-            console.error('Error loading maps:', error);
-        }
     }
 
     initializeUI() {
@@ -29,8 +17,6 @@ class MapManager {
                 console.log('Create Map button clicked');
                 this.startMapCreation();
             });
-        } else {
-            console.error('Create Map button not found');
         }
 
         if (this.loadMapBtn) {
@@ -50,31 +36,6 @@ class MapManager {
         // Bind the click handler to this instance
         this.boundHandleMapClick = this.handleMapClick.bind(this);
         
-        // Setup AR camera and cursor
-        const camera = document.querySelector('a-camera');
-        if (camera) {
-            camera.addEventListener('componentchanged', (event) => {
-                if (event.detail.name === 'position' || event.detail.name === 'rotation') {
-                    this.updateCameraPose(camera.getAttribute('position'), camera.getAttribute('rotation'));
-                }
-            });
-        }
-
-        // Add raycaster to camera if not present
-        const cursor = document.querySelector('a-cursor');
-        if (!cursor) {
-            const newCursor = document.createElement('a-cursor');
-            newCursor.setAttribute('raycaster', 'objects: .waypoint-marker, .clickable');
-            newCursor.setAttribute('cursor', 'fuse: false');
-            camera.appendChild(newCursor);
-        }
-
-        // Make the ground plane clickable
-        const plane = document.querySelector('a-plane');
-        if (plane) {
-            plane.classList.add('clickable');
-        }
-
         console.log('AR Scene setup complete');
     }
 
@@ -82,7 +43,6 @@ class MapManager {
         console.log('Starting map creation...');
         
         try {
-            // Clear any existing map
             this.clearScene();
             
             this.currentMap = {
@@ -92,67 +52,34 @@ class MapManager {
                 features: []
             };
 
-            console.log('New map created:', this.currentMap);
-
             if (this.statusDiv) {
-                this.statusDiv.textContent = 'Creating new map. Click on the green plane to place waypoints. Press Save when done.';
+                this.statusDiv.textContent = 'Creating new map. Click to place waypoints. Press Save when done.';
             }
 
             if (this.createMapBtn) {
                 this.createMapBtn.textContent = 'Save Map';
-                this.createMapBtn.onclick = () => {
-                    console.log('Save Map clicked');
-                    this.saveCurrentMap();
-                };
+                this.createMapBtn.onclick = () => this.saveCurrentMap();
             }
 
             if (this.scene) {
-                // Remove any existing click listener
-                this.scene.removeEventListener('click', this.boundHandleMapClick);
-                // Add new click listener using the bound function
                 this.scene.addEventListener('click', this.boundHandleMapClick);
-                console.log('Click listener added to scene');
-            } else {
-                console.error('Scene not found');
             }
-
-            // Add debug info
-            if (this.debugInterval) {
-                clearInterval(this.debugInterval);
-            }
-
-            this.debugInterval = setInterval(() => {
-                if (this.statusDiv) {
-                    const camera = document.querySelector('a-camera');
-                    const pos = camera ? camera.getAttribute('position') : null;
-                    const waypoints = this.currentMap.waypoints.length;
-                    this.statusDiv.textContent = `Camera: ${JSON.stringify(pos)}. Waypoints: ${waypoints}. Click to add more.`;
-                }
-            }, 1000);
 
             console.log('Map creation setup complete');
         } catch (error) {
             console.error('Error in startMapCreation:', error);
             if (this.statusDiv) {
-                this.statusDiv.textContent = 'Error starting map creation. Check console for details.';
+                this.statusDiv.textContent = 'Error starting map creation';
             }
         }
     }
 
     handleMapClick(event) {
-        if (!this.currentMap) {
-            console.log('No active map for click handling');
-            return;
-        }
-
-        console.log('Map click detected:', event);
+        if (!this.currentMap) return;
 
         const intersection = event.detail.intersection;
         if (!intersection) {
             console.log('No intersection point found');
-            if (this.statusDiv) {
-                this.statusDiv.textContent = 'No intersection point found. Try clicking on the green plane.';
-            }
             return;
         }
 
@@ -160,10 +87,6 @@ class MapManager {
         console.log('Adding waypoint at position:', position);
         
         this.addWaypoint(position);
-        
-        if (this.statusDiv) {
-            this.statusDiv.textContent = `Waypoint added at ${JSON.stringify(position)}. Total waypoints: ${this.currentMap.waypoints.length}`;
-        }
     }
 
     addWaypoint(position) {
@@ -187,6 +110,10 @@ class MapManager {
         // Connect to nearest waypoint if exists
         if (this.currentMap.waypoints.length > 1) {
             this.connectToNearestWaypoint(waypoint);
+        }
+
+        if (this.statusDiv) {
+            this.statusDiv.textContent = `Added waypoint. Total: ${this.currentMap.waypoints.length}`;
         }
     }
 
@@ -212,104 +139,73 @@ class MapManager {
     }
 
     drawConnection(pos1, pos2) {
-        const line = document.createElement('a-entity');
-        line.setAttribute('line', {
-            start: pos1,
-            end: pos2,
-            color: '#4CAF50'
-        });
-        this.waypointsEntity.appendChild(line);
+        // Create a cylinder to represent the connection
+        const cylinder = document.createElement('a-cylinder');
+        
+        // Calculate midpoint
+        const midpoint = {
+            x: (pos1.x + pos2.x) / 2,
+            y: (pos1.y + pos2.y) / 2,
+            z: (pos1.z + pos2.z) / 2
+        };
+
+        // Calculate distance between points
+        const distance = this.distance(pos1, pos2);
+
+        // Set cylinder properties
+        cylinder.setAttribute('position', midpoint);
+        cylinder.setAttribute('radius', '0.02');
+        cylinder.setAttribute('height', distance);
+        cylinder.setAttribute('color', '#4CAF50');
+        
+        // Calculate rotation to point from pos1 to pos2
+        const direction = {
+            x: pos2.x - pos1.x,
+            y: pos2.y - pos1.y,
+            z: pos2.z - pos1.z
+        };
+        
+        // Convert direction to rotation (in degrees)
+        const rotationX = Math.atan2(direction.y, Math.sqrt(direction.x * direction.x + direction.z * direction.z)) * (180 / Math.PI);
+        const rotationY = Math.atan2(direction.x, direction.z) * (180 / Math.PI);
+        
+        cylinder.setAttribute('rotation', `${rotationX} ${rotationY} 0`);
+        
+        this.waypointsEntity.appendChild(cylinder);
     }
 
     async saveCurrentMap() {
-        if (!this.currentMap) {
-            console.error('No current map to save');
-            this.statusDiv.textContent = 'Error: No map to save';
-            return;
-        }
-
-        console.log('Preparing to save map:', this.currentMap);
-
-        // Validate map data
-        if (!this.validateMapData()) {
-            console.error('Invalid map data');
-            this.statusDiv.textContent = 'Error: Invalid map data';
-            return;
-        }
-
-        // Format waypoint positions
-        const formattedMap = {
-            ...this.currentMap,
-            waypoints: this.currentMap.waypoints.map(waypoint => ({
-                ...waypoint,
-                position: {
-                    x: parseFloat(waypoint.position.x.toFixed(3)),
-                    y: parseFloat(waypoint.position.y.toFixed(3)),
-                    z: parseFloat(waypoint.position.z.toFixed(3))
-                }
-            }))
-        };
-
-        console.log('Formatted map data:', formattedMap);
+        if (!this.currentMap) return;
 
         try {
-            // Save to database
             const response = await fetch('/api/maps', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify(formattedMap)
+                body: JSON.stringify(this.currentMap)
             });
 
             if (!response.ok) {
-                throw new Error(`Failed to save map: ${response.statusText}`);
+                throw new Error('Failed to save map');
             }
 
             const savedMap = await response.json();
             this.maps.set(savedMap.id, savedMap);
-            console.log('Map saved to database:', savedMap);
-
+            
             this.statusDiv.textContent = 'Map saved successfully!';
             this.resetMapCreation();
         } catch (error) {
             console.error('Error saving map:', error);
-            this.statusDiv.textContent = `Error saving map: ${error.message}`;
+            this.statusDiv.textContent = 'Error saving map';
         }
-    }
-
-    validateMapData() {
-        if (!this.currentMap.id || !this.currentMap.name) {
-            console.error('Missing map id or name');
-            return false;
-        }
-        if (!Array.isArray(this.currentMap.waypoints) || this.currentMap.waypoints.length === 0) {
-            console.error('No waypoints in the map');
-            return false;
-        }
-        for (const waypoint of this.currentMap.waypoints) {
-            if (!waypoint.id || !waypoint.position || !waypoint.connections) {
-                console.error('Invalid waypoint data:', waypoint);
-                return false;
-            }
-        }
-        return true;
     }
 
     async showMapList() {
         try {
-            // Fetch latest maps from database
             const response = await fetch('/api/maps');
             const maps = await response.json();
-            console.log('Available maps:', maps);
 
-            // Clear any existing list
-            const existingList = document.getElementById('map-list');
-            if (existingList) {
-                existingList.remove();
-            }
-
-            // Create map list container
             const listContainer = document.createElement('div');
             listContainer.id = 'map-list';
             listContainer.style.cssText = `
@@ -346,85 +242,45 @@ class MapManager {
                 listContainer.appendChild(list);
             }
 
-            // Add close button
             const closeBtn = document.createElement('button');
             closeBtn.textContent = 'Close';
-            closeBtn.style.marginTop = '10px';
             closeBtn.onclick = () => listContainer.remove();
             listContainer.appendChild(closeBtn);
 
             document.body.appendChild(listContainer);
         } catch (error) {
             console.error('Error loading maps:', error);
-            this.statusDiv.textContent = 'Error loading maps. Check console for details.';
+            this.statusDiv.textContent = 'Error loading maps';
         }
     }
 
     async loadMap(mapId) {
         try {
-            console.log('Loading map with ID:', mapId);
             const response = await fetch(`/api/maps/${mapId}`);
-            if (!response.ok) {
-                throw new Error('Map not found');
-            }
-            const map = await response.json();
-            console.log('Loaded map data:', map);
+            if (!response.ok) throw new Error('Map not found');
             
+            const map = await response.json();
             this.currentMap = map;
             this.clearScene();
-            await this.renderMap(map);
+            this.renderMap(map);
             
-            this.statusDiv.textContent = `Loaded map: ${map.name} with ${map.waypoints.length} waypoints`;
+            this.statusDiv.textContent = `Loaded map: ${map.name}`;
         } catch (error) {
             console.error('Error loading map:', error);
-            this.statusDiv.textContent = 'Error loading map. Check console for details.';
+            this.statusDiv.textContent = 'Error loading map';
         }
     }
 
     clearScene() {
-        console.log('Clearing scene');
         while (this.waypointsEntity.firstChild) {
             this.waypointsEntity.removeChild(this.waypointsEntity.firstChild);
         }
     }
 
-    async renderMap(map) {
-        console.log('Rendering map:', map);
-        if (!map.waypoints || !Array.isArray(map.waypoints)) {
-            console.error('Invalid waypoints data:', map.waypoints);
-            return;
-        }
-
-        for (const waypoint of map.waypoints) {
-            if (!waypoint.position) {
-                console.error('Invalid waypoint data:', waypoint);
-                continue;
-            }
-
-            console.log('Rendering waypoint:', waypoint);
-            
-            // Create visual marker
-            const marker = document.createElement('a-sphere');
-            marker.setAttribute('position', waypoint.position);
-            marker.setAttribute('radius', '0.1');
-            marker.setAttribute('color', '#ff4081');
-            marker.setAttribute('class', 'waypoint-marker');
-            marker.setAttribute('data-id', waypoint.id);
-            
-            this.waypointsEntity.appendChild(marker);
-
-            // Render connections
-            if (waypoint.connections && Array.isArray(waypoint.connections)) {
-                waypoint.connections.forEach(connectedId => {
-                    const connectedWaypoint = map.waypoints.find(w => w.id === connectedId);
-                    if (connectedWaypoint) {
-                        this.drawConnection(waypoint.position, connectedWaypoint.position);
-                    }
-                });
-            }
-        }
-        
-        console.log('Map rendering complete');
+    renderMap(map) {
+        map.waypoints.forEach(waypoint => {
+            this.addWaypoint(waypoint.position);
+        });
     }
 
     resetMapCreation() {
@@ -432,14 +288,6 @@ class MapManager {
         this.createMapBtn.textContent = 'Create Map';
         this.createMapBtn.onclick = () => this.startMapCreation();
         this.scene.removeEventListener('click', this.boundHandleMapClick);
-        
-        // Clear debug interval
-        if (this.debugInterval) {
-            clearInterval(this.debugInterval);
-            this.debugInterval = null;
-        }
-        
-        this.statusDiv.textContent = 'Map creation cancelled. Click Create Map to start again.';
     }
 
     distance(pos1, pos2) {
@@ -447,14 +295,6 @@ class MapManager {
         const dy = pos1.y - pos2.y;
         const dz = pos1.z - pos2.z;
         return Math.sqrt(dx * dx + dy * dy + dz * dz);
-    }
-
-    updateCameraPose(position, rotation) {
-        // Update AR camera pose
-        // This would be used for feature tracking and map alignment
-        if (this.currentMap) {
-            this.statusDiv.textContent = `Camera: ${JSON.stringify(position)}`;
-        }
     }
 }
 

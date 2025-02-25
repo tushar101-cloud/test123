@@ -1,106 +1,70 @@
-class Node {
-    constructor(x, y, z) {
-        this.position = { x, y, z };
-        this.g = 0; // Cost from start to current node
-        this.h = 0; // Heuristic cost from current node to target
-        this.f = 0; // Total cost (g + h)
-        this.neighbors = [];
-        this.parent = null;
-        this.id = `${x},${y},${z}`;
-    }
-
-    addNeighbor(node) {
-        this.neighbors.push(node);
-    }
-
-    distanceTo(node) {
-        const dx = this.position.x - node.position.x;
-        const dy = this.position.y - node.position.y;
-        const dz = this.position.z - node.position.z;
-        return Math.sqrt(dx * dx + dy * dy + dz * dz);
-    }
-}
-
 class AStar {
     constructor() {
         this.nodes = new Map();
     }
 
-    addNode(x, y, z) {
-        const node = new Node(x, y, z);
-        this.nodes.set(node.id, node);
-        return node;
+    addNode(id, position, connections) {
+        this.nodes.set(id, { id, position, connections });
     }
 
-    connectNodes(node1, node2) {
-        node1.addNeighbor(node2);
-        node2.addNeighbor(node1);
+    heuristic(a, b) {
+        return Math.sqrt(
+            Math.pow(a.x - b.x, 2) +
+            Math.pow(a.y - b.y, 2) +
+            Math.pow(a.z - b.z, 2)
+        );
     }
 
-    findPath(startNode, targetNode) {
-        const openSet = new Set([startNode]);
-        const closedSet = new Set();
+    findPath(startId, goalId) {
+        const start = this.nodes.get(startId);
+        const goal = this.nodes.get(goalId);
 
-        startNode.g = 0;
-        startNode.h = startNode.distanceTo(targetNode);
-        startNode.f = startNode.h;
+        if (!start || !goal) return null;
+
+        const openSet = new Set([start]);
+        const cameFrom = new Map();
+        const gScore = new Map();
+        const fScore = new Map();
+
+        gScore.set(start, 0);
+        fScore.set(start, this.heuristic(start.position, goal.position));
 
         while (openSet.size > 0) {
-            // Find node with lowest f cost
-            let current = Array.from(openSet).reduce((a, b) => a.f < b.f ? a : b);
+            const current = Array.from(openSet).reduce((a, b) => 
+                fScore.get(a) < fScore.get(b) ? a : b
+            );
 
-            if (current === targetNode) {
-                return this.reconstructPath(current);
+            if (current === goal) {
+                return this.reconstructPath(cameFrom, current);
             }
 
             openSet.delete(current);
-            closedSet.add(current);
 
-            for (let neighbor of current.neighbors) {
-                if (closedSet.has(neighbor)) {
-                    continue;
+            for (const neighborId of current.connections) {
+                const neighbor = this.nodes.get(neighborId);
+                const tentativeGScore = gScore.get(current) + this.heuristic(current.position, neighbor.position);
+
+                if (!gScore.has(neighbor) || tentativeGScore < gScore.get(neighbor)) {
+                    cameFrom.set(neighbor, current);
+                    gScore.set(neighbor, tentativeGScore);
+                    fScore.set(neighbor, gScore.get(neighbor) + this.heuristic(neighbor.position, goal.position));
+
+                    if (!openSet.has(neighbor)) {
+                        openSet.add(neighbor);
+                    }
                 }
-
-                const tentativeG = current.g + current.distanceTo(neighbor);
-
-                if (!openSet.has(neighbor)) {
-                    openSet.add(neighbor);
-                } else if (tentativeG >= neighbor.g) {
-                    continue;
-                }
-
-                neighbor.parent = current;
-                neighbor.g = tentativeG;
-                neighbor.h = neighbor.distanceTo(targetNode);
-                neighbor.f = neighbor.g + neighbor.h;
             }
         }
 
         return null; // No path found
     }
 
-    reconstructPath(node) {
-        const path = [];
-        let current = node;
-
-        while (current !== null) {
+    reconstructPath(cameFrom, current) {
+        const path = [current];
+        while (cameFrom.has(current)) {
+            current = cameFrom.get(current);
             path.unshift(current);
-            current = current.parent;
         }
-
         return path;
     }
-
-    clearNodes() {
-        this.nodes.clear();
-    }
-
-    getNode(x, y, z) {
-        const id = `${x},${y},${z}`;
-        return this.nodes.get(id);
-    }
 }
-
-// Export for use in other modules
-window.AStar = AStar;
-window.Node = Node;
