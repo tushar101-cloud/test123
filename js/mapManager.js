@@ -3,6 +3,7 @@ class MapManager {
         this.maps = new Map();
         this.currentMap = null;
         this.waypoints = [];
+        this.selectedWaypoint = null;
         this.initializeUI();
         this.setupARScene();
     }
@@ -47,7 +48,7 @@ class MapManager {
             
             this.currentMap = {
                 id: Date.now().toString(),
-                name: 'New Map',
+                name: `Map ${new Date().toLocaleString()}`,
                 waypoints: [],
                 features: []
             };
@@ -92,17 +93,27 @@ class MapManager {
     addWaypoint(position) {
         const waypoint = {
             id: Date.now().toString(),
-            position: position,
+            position: {
+                x: parseFloat(position.x.toFixed(3)),
+                y: parseFloat(position.y.toFixed(3)),
+                z: parseFloat(position.z.toFixed(3))
+            },
             connections: []
         };
 
         // Create visual marker
         const marker = document.createElement('a-sphere');
-        marker.setAttribute('position', position);
+        marker.setAttribute('position', waypoint.position);
         marker.setAttribute('radius', '0.1');
         marker.setAttribute('color', '#ff4081');
         marker.setAttribute('class', 'waypoint-marker');
         marker.setAttribute('data-id', waypoint.id);
+
+        // Add click event to select waypoint
+        marker.addEventListener('click', (event) => {
+            event.stopPropagation();
+            this.selectWaypoint(waypoint, marker);
+        });
 
         this.waypointsEntity.appendChild(marker);
         this.currentMap.waypoints.push(waypoint);
@@ -114,6 +125,32 @@ class MapManager {
 
         if (this.statusDiv) {
             this.statusDiv.textContent = `Added waypoint. Total: ${this.currentMap.waypoints.length}`;
+        }
+    }
+
+    selectWaypoint(waypoint, marker) {
+        if (this.selectedWaypoint) {
+            // If we already have a selected waypoint, create a connection
+            if (this.selectedWaypoint.id !== waypoint.id) {
+                this.createConnection(this.selectedWaypoint, waypoint);
+            }
+            // Reset selection
+            const prevMarker = this.waypointsEntity.querySelector(`[data-id="${this.selectedWaypoint.id}"]`);
+            if (prevMarker) prevMarker.setAttribute('color', '#ff4081');
+            this.selectedWaypoint = null;
+        } else {
+            // Select the waypoint
+            this.selectedWaypoint = waypoint;
+            marker.setAttribute('color', '#4CAF50');
+        }
+    }
+
+    createConnection(waypoint1, waypoint2) {
+        // Add connection to both waypoints if it doesn't exist
+        if (!waypoint1.connections.includes(waypoint2.id)) {
+            waypoint1.connections.push(waypoint2.id);
+            waypoint2.connections.push(waypoint1.id);
+            this.drawConnection(waypoint1.position, waypoint2.position);
         }
     }
 
@@ -132,9 +169,7 @@ class MapManager {
         }
 
         if (nearest) {
-            waypoint.connections.push(nearest.id);
-            nearest.connections.push(waypoint.id);
-            this.drawConnection(waypoint.position, nearest.position);
+            this.createConnection(waypoint, nearest);
         }
     }
 
@@ -152,12 +187,6 @@ class MapManager {
         // Calculate distance between points
         const distance = this.distance(pos1, pos2);
 
-        // Set cylinder properties
-        cylinder.setAttribute('position', midpoint);
-        cylinder.setAttribute('radius', '0.02');
-        cylinder.setAttribute('height', distance);
-        cylinder.setAttribute('color', '#4CAF50');
-        
         // Calculate rotation to point from pos1 to pos2
         const direction = {
             x: pos2.x - pos1.x,
@@ -169,13 +198,21 @@ class MapManager {
         const rotationX = Math.atan2(direction.y, Math.sqrt(direction.x * direction.x + direction.z * direction.z)) * (180 / Math.PI);
         const rotationY = Math.atan2(direction.x, direction.z) * (180 / Math.PI);
         
+        // Set cylinder properties
+        cylinder.setAttribute('position', midpoint);
+        cylinder.setAttribute('radius', '0.02');
+        cylinder.setAttribute('height', distance);
+        cylinder.setAttribute('color', '#4CAF50');
         cylinder.setAttribute('rotation', `${rotationX} ${rotationY} 0`);
         
         this.waypointsEntity.appendChild(cylinder);
     }
 
     async saveCurrentMap() {
-        if (!this.currentMap) return;
+        if (!this.currentMap || !this.currentMap.waypoints.length) {
+            this.statusDiv.textContent = 'Error: No waypoints to save';
+            return;
+        }
 
         try {
             const response = await fetch('/api/maps', {
@@ -220,7 +257,7 @@ class MapManager {
                 z-index: 1000;
             `;
 
-            if (maps.length === 0) {
+            if (!maps || maps.length === 0) {
                 listContainer.innerHTML = '<p>No saved maps found</p>';
             } else {
                 const list = document.createElement('ul');
@@ -265,6 +302,10 @@ class MapManager {
             this.renderMap(map);
             
             this.statusDiv.textContent = `Loaded map: ${map.name}`;
+
+            // Remove any existing map list dialog
+            const existingList = document.getElementById('map-list');
+            if (existingList) existingList.remove();
         } catch (error) {
             console.error('Error loading map:', error);
             this.statusDiv.textContent = 'Error loading map';
@@ -275,16 +316,36 @@ class MapManager {
         while (this.waypointsEntity.firstChild) {
             this.waypointsEntity.removeChild(this.waypointsEntity.firstChild);
         }
+        this.selectedWaypoint = null;
     }
 
     renderMap(map) {
+        if (!map.waypoints || !Array.isArray(map.waypoints)) {
+            console.error('Invalid map data:', map);
+            return;
+        }
+
+        // First, create all waypoints
         map.waypoints.forEach(waypoint => {
             this.addWaypoint(waypoint.position);
+        });
+
+        // Then, create all connections
+        map.waypoints.forEach(waypoint => {
+            if (waypoint.connections && Array.isArray(waypoint.connections)) {
+                waypoint.connections.forEach(connectedId => {
+                    const connectedWaypoint = map.waypoints.find(w => w.id === connectedId);
+                    if (connectedWaypoint && waypoint.id < connectedId) { // Only draw connection once
+                        this.drawConnection(waypoint.position, connectedWaypoint.position);
+                    }
+                });
+            }
         });
     }
 
     resetMapCreation() {
         this.currentMap = null;
+        this.selectedWaypoint = null;
         this.createMapBtn.textContent = 'Create Map';
         this.createMapBtn.onclick = () => this.startMapCreation();
         this.scene.removeEventListener('click', this.boundHandleMapClick);

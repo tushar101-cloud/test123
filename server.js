@@ -16,20 +16,16 @@ app.use((req, res, next) => {
 // Middleware
 app.use(compression());
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
 app.use(express.static(path.join(__dirname)));
 
-// MongoDB connection
+// MongoDB connection - using local MongoDB
 const mongoURI = 'mongodb://127.0.0.1:27017/indoor-nav';
-
-// Configure Mongoose
-mongoose.set('debug', true);
-mongoose.set('strictQuery', false);
 
 // Map schema
 const mapSchema = new mongoose.Schema({
-    id: String,
-    name: String,
+    id: { type: String, required: true, unique: true },
+    name: { type: String, required: true },
     waypoints: [{
         id: String,
         position: {
@@ -54,23 +50,24 @@ const mapSchema = new mongoose.Schema({
 // Map model
 const MapModel = mongoose.model('Map', mapSchema);
 
-// Connect to MongoDB with detailed error handling
-console.log('Attempting to connect to MongoDB...');
-mongoose.connect(mongoURI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-    serverSelectionTimeoutMS: 5000
-})
-.then(() => {
-    console.log('MongoDB connected successfully');
-    setupRoutes();
-})
-.catch(err => {
-    console.error('MongoDB connection error:', err);
-    if (err.name === 'MongoServerSelectionError') {
-        console.error('Make sure MongoDB is running on your machine');
-    }
-});
+// Connect to MongoDB with retry logic
+function connectWithRetry() {
+    console.log('Attempting to connect to MongoDB...');
+    mongoose.connect(mongoURI, {
+        useNewUrlParser: true,
+        useUnifiedTopology: true,
+        serverSelectionTimeoutMS: 5000
+    })
+    .then(() => {
+        console.log('MongoDB connected successfully');
+        setupRoutes();
+    })
+    .catch(err => {
+        console.error('MongoDB connection error:', err);
+        console.log('Retrying connection in 5 seconds...');
+        setTimeout(connectWithRetry, 5000);
+    });
+}
 
 // Monitor MongoDB connection
 mongoose.connection.on('error', err => {
@@ -79,6 +76,7 @@ mongoose.connection.on('error', err => {
 
 mongoose.connection.on('disconnected', () => {
     console.log('MongoDB disconnected');
+    connectWithRetry();
 });
 
 mongoose.connection.on('reconnected', () => {
@@ -86,24 +84,24 @@ mongoose.connection.on('reconnected', () => {
 });
 
 function setupRoutes() {
-    // Test database connection
-    app.get('/api/test-db', async (req, res) => {
-        try {
-            const collections = await mongoose.connection.db.listCollections().toArray();
-            res.json({ message: 'Database connection successful', collections: collections.map(c => c.name) });
-        } catch (error) {
-            console.error('Database test failed:', error);
-            res.status(500).json({ error: 'Database connection failed', details: error.message });
-        }
-    });
-
     // API Endpoints
     app.post('/api/maps', async (req, res) => {
         console.log('Received map data:', req.body);
-        const newMap = new MapModel(req.body);
         try {
+            const existingMap = await MapModel.findOne({ id: req.body.id });
+            if (existingMap) {
+                const updatedMap = await MapModel.findOneAndUpdate(
+                    { id: req.body.id },
+                    req.body,
+                    { new: true }
+                );
+                console.log('Map updated:', updatedMap);
+                return res.status(200).json(updatedMap);
+            }
+
+            const newMap = new MapModel(req.body);
             await newMap.save();
-            console.log('Map saved successfully:', newMap);
+            console.log('New map saved:', newMap);
             res.status(201).json(newMap);
         } catch (error) {
             console.error('Error saving map:', error);
@@ -113,7 +111,7 @@ function setupRoutes() {
 
     app.get('/api/maps', async (req, res) => {
         try {
-            const maps = await MapModel.find();
+            const maps = await MapModel.find({}, { _id: 0, __v: 0 });
             console.log('Retrieved maps:', maps);
             res.status(200).json(maps);
         } catch (error) {
@@ -124,7 +122,7 @@ function setupRoutes() {
 
     app.get('/api/maps/:id', async (req, res) => {
         try {
-            const map = await MapModel.findOne({ id: req.params.id });
+            const map = await MapModel.findOne({ id: req.params.id }, { _id: 0, __v: 0 });
             if (!map) {
                 console.log('Map not found:', req.params.id);
                 return res.status(404).json({ error: 'Map not found' });
@@ -134,25 +132,6 @@ function setupRoutes() {
         } catch (error) {
             console.error('Error fetching map:', error);
             res.status(500).json({ error: 'Error fetching map', details: error.message });
-        }
-    });
-
-    app.put('/api/maps/:id', async (req, res) => {
-        try {
-            const updatedMap = await MapModel.findOneAndUpdate(
-                { id: req.params.id },
-                req.body,
-                { new: true }
-            );
-            if (!updatedMap) {
-                console.log('Map not found for update:', req.params.id);
-                return res.status(404).json({ error: 'Map not found' });
-            }
-            console.log('Updated map:', updatedMap);
-            res.status(200).json(updatedMap);
-        } catch (error) {
-            console.error('Error updating map:', error);
-            res.status(400).json({ error: 'Error updating map', details: error.message });
         }
     });
 
@@ -171,10 +150,19 @@ function setupRoutes() {
         }
     });
 
-    // Catch-all route to handle 404s
-    app.use((req, res) => {
-        console.log(`404 Not Found: ${req.method} ${req.url}`);
-        res.status(404).json({ error: 'Not Found' });
+    // Test database connection
+    app.get('/api/test-db', async (req, res) => {
+        try {
+            await mongoose.connection.db.admin().ping();
+            const collections = await mongoose.connection.db.listCollections().toArray();
+            res.json({ 
+                message: 'Database connection successful',
+                collections: collections.map(c => c.name)
+            });
+        } catch (error) {
+            console.error('Database test failed:', error);
+            res.status(500).json({ error: 'Database connection failed', details: error.message });
+        }
     });
 
     console.log('Routes set up successfully');
@@ -189,4 +177,5 @@ app.use((err, req, res, next) => {
 // Start the server
 app.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`);
+    connectWithRetry();
 });
