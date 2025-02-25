@@ -13,6 +13,16 @@ mongoose.connect(mongoURI, { useNewUrlParser: true, useUnifiedTopology: true, db
     .then(() => console.log('MongoDB connected'))
     .catch(err => console.error('MongoDB connection error:', err));
 
+// Test database connection
+app.get('/api/test-db', async (req, res) => {
+    try {
+        const collections = await mongoose.connection.db.listCollections().toArray();
+        res.json({ message: 'Database connection successful', collections: collections.map(c => c.name) });
+    } catch (error) {
+        res.status(500).json({ error: 'Database connection failed', details: error.message });
+    }
+});
+
 // Middleware
 app.use(compression());
 app.use(cors());
